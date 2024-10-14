@@ -41,7 +41,11 @@ impl LogProgressBar {
     }
 
     pub fn send(&self) {
-        let log_message = Arc::new(LogMessage::Progress { uuid: *self.id, message: self.format(), finished: *self.finished.lock().unwrap()});
+        let log_message = Arc::new(if *self.finished.lock().unwrap() {
+            LogMessage::Finished { uuid: *self.id }
+        } else {
+            LogMessage::Progress { uuid: *self.id, message: self.format()}
+        });
         if let Some(sender) = &self.sender_stdout {
             sender.send(log_message.clone()).expect("Unable to send log message");
         }
@@ -77,13 +81,10 @@ impl LogProgressBar {
     }
     
     pub fn finish(&self) {
-        {
-            let mut finished = self.finished.lock().unwrap();
-            if *finished {
-                return
-            }
-            *finished = true;    
+        if *self.finished.lock().unwrap() {
+            return
         }
+        *self.finished.lock().unwrap() = true;    
         *self.current_iter.lock().unwrap() = *self.n_iter;
         self.send();
     }
@@ -96,3 +97,16 @@ impl Drop for LogProgressBar {
     }
 }
 
+
+#[test]
+fn test_progress_bar() {
+    use super::logger_config;
+    logger_config()
+        .init_global();
+    let pb = LogProgressBar::new(100, "Test");
+    for _ in 0..50 {
+        pb.inc(1);
+    }
+    pb.finish();
+    std::thread::sleep(std::time::Duration::from_millis(1));
+}

@@ -14,7 +14,9 @@ pub enum LogMessage {
     /// A regular log message with level, name and message
     Regular{level: Level, name: Option<String>, message: String},
     /// A progress log message, containing the progress bar identifier, the progress message, and a flag indicating if it's finished.
-    Progress{uuid: Uuid, message: String, finished: bool},
+    Progress{uuid: Uuid, message: String},
+    /// A progress log message indicating the end of the progress bar.
+    Finished{uuid: Uuid},
     /// An shutdown message indicating the end of logging.
     Shutdown
 }
@@ -75,11 +77,11 @@ pub fn spawn_log_thread<W: LogWriter+Send+'static>(mut writer: W)-> LogSender {
                     let message = format_log(message, *level, name);
                     writer.regular(&message);
                 },
-                LogMessage::Progress { uuid, message, finished } => {
+                LogMessage::Progress { uuid, message } => {
                     writer.progress(message, *uuid);
-                    if *finished {
-                        writer.finished(*uuid);
-                    }
+                }
+                LogMessage::Finished { uuid } => {
+                    writer.finished(*uuid);
                 }
                 LogMessage::Shutdown => {
                     break;

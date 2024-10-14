@@ -21,6 +21,7 @@ fn main() {
             pb.inc(1);
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
+        pb.finish();
     });
     std::thread::sleep(std::time::Duration::from_millis(2));
     log::info!("Hello, Bottom !");
