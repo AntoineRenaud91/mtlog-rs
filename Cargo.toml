@@ -1,6 +1,6 @@
 [package]
 name = "mtlog"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["Antoine Renaud <antoine.renaud91@gmail.com>"]
 description = "Multi-threaded logger with support for progress bars and log files."
@@ -8,7 +8,7 @@ license = "GPL-3.0-only"
 repository = "https://github.com/AntoineRenaud91/mtlog-rs"
 homepage = "https://github.com/AntoineRenaud91/mtlog-rs"
 keywords = ["log", "config", "progress", "multi-thread", "concurrent"]
-documentation = "https://docs.rs/mtlog-rs"
+documentation = "https://docs.rs/mtlog"
 categories = ["config","concurrency"]
 
 
