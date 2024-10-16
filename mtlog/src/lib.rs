@@ -6,7 +6,7 @@
 //! // Cargo.toml
 //! ...
 //! [dependencies]
-//! mtlog = "0.1.0"
+//! mtlog = "0.1.4"
 //! ```
 //! 
 //! ```rust
@@ -56,28 +56,9 @@
 //! std::thread::sleep(std::time::Duration::from_millis(1)); // wait for log to flush
 //! assert!(std::fs::read_to_string("/tmp/app.log").unwrap().ends_with("Hello, world!\n"));
 //! ```
-//! 
-//! ## Progress bar
-//! A progress bar implementation is provided. Multiple progress bars can be created and updated concurrently without interfering with each other and regular logs
-//! 
-//! ```rust
-//! use mtlog::{logger_config,LogProgressBar};
-//! 
-//! logger_config()
-//!     .init_global();
-//! 
-//! let pb = LogProgressBar::new(100, "My Progress Bar");
-//! for i in 0..100 {
-//!     pb.inc(1);
-//!     if i == 50 {
-//!        log::info!("Halfway there!");
-//!     }
-//! }
-//! pb.finish();
-//! ```
 
 
-mod progress_bar;
+// mod progress_bar;
 mod log_writer;
 mod utils;
 
@@ -85,7 +66,6 @@ use std::{cell::RefCell, path::Path, sync::{Arc, LazyLock, RwLock}};
 use log_writer::{LogFile, LogStdout};
 use utils::{spawn_log_thread, LogSender, LogMessage};
 use log::{LevelFilter, Log};
-pub use progress_bar::LogProgressBar;
 
 
 /// Configuration for the logger.
@@ -137,7 +117,7 @@ impl Log for MTLogger {
             if level > config.level {
                 return;
             }
-            let log_message = Arc::new(LogMessage::Regular { level, name: config.name.clone(), message: record.args().to_string()});
+            let log_message = Arc::new(LogMessage { level, name: config.name.clone(), message: record.args().to_string()});
             if let Some(sender) = &config.sender_stdout {
                 sender.send(log_message.clone()).expect("Unable to send log message to stdout logging thread");
             }

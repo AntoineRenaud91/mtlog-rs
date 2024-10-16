@@ -1,4 +1,5 @@
-use mtlog::{logger_config, LogProgressBar};
+use mtlog::logger_config;
+use mtlog_progress::LogProgressBar;
 
 
 fn main() {

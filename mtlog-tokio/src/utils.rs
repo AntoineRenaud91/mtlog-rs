@@ -8,17 +8,11 @@ use uuid::Uuid;
 use crate::log_writer::LogWriter;
 
 
-/// Enum representing a log message which can be of three different types.
 #[derive(Debug,Clone)]
-pub enum LogMessage {
-    /// A regular log message with level, name and message
-    Regular{level: Level, name: Option<String>, message: String},
-    /// A progress log message, containing the progress bar identifier, the progress message, and a flag indicating if it's finished.
-    Progress{uuid: Uuid, message: String},
-    /// A progress log message indicating the end of the progress bar.
-    Finished{uuid: Uuid},
-    /// An shutdown message indicating the end of logging.
-    Shutdown
+pub struct LogMessage {
+    pub message: String,
+    pub level: Level,
+    pub name: Option<String>,
 }
 
 pub struct LogSender{
@@ -45,7 +39,7 @@ impl LogSender {
         Self {sender, handler: Some(handler), shutdown_initiated: false}
     }
     pub fn shutdown(&mut self) {
-        self.send(Arc::new(LogMessage::Shutdown)).expect("Unable to send shutdown message to file logger thread");
+        self.send(Arc::new(LogMessage {message: "___SHUTDOWN___".into(), level: Level::Info, name: None})).expect("Unable to send shutdown message to file logger thread");
         if !self.handler.take().unwrap().join().expect("Unable to join file logger thread") {
             panic!("Logger thread shutdown failed");
         };
@@ -72,20 +66,24 @@ pub fn spawn_log_thread<W: LogWriter+Send+'static>(mut writer: W)-> LogSender {
     let (sender, receiver) = channel::<Arc<LogMessage>>();
     let handler = std::thread::spawn(move || {
         for log_message in receiver {
-            match log_message.as_ref() {
-                LogMessage::Regular { level, name, message } => {
-                    let message = format_log(message, *level, name);
-                    writer.regular(&message);
-                },
-                LogMessage::Progress { uuid, message } => {
-                    writer.progress(message, *uuid);
+            let LogMessage { message, level, name } = log_message.as_ref();
+            if message == "___SHUTDOWN___" {
+                break;
+            }
+            if message.starts_with("___PROGRESS___") {
+                let message = message.trim_start_matches("___PROGRESS___");
+                if let Some((uuid_str, message)) = message.split_once("___") {
+                    if let Ok(uuid) = Uuid::parse_str(uuid_str) {
+                        if message=="FINISHED" {
+                            writer.finished(uuid);
+                        } else {
+                            writer.progress(message, uuid);
+                        }
+                    }
                 }
-                LogMessage::Finished { uuid } => {
-                    writer.finished(*uuid);
-                }
-                LogMessage::Shutdown => {
-                    break;
-                }
+            } else {
+                let message = format_log(message, *level, name);
+                writer.regular(&message);
             }
         }
         true

@@ -1,0 +1,22 @@
+[package]
+name = "mtlog-progress"
+version = "0.1.0"
+edition = "2021"
+authors = ["Antoine Renaud <antoine.renaud91@gmail.com>"]
+description = "A progress bar implementation working gracefully with mtlog's logger."
+license = "GPL-3.0-only"
+repository = "https://github.com/AntoineRenaud91/mtlog-rs"
+homepage = "https://github.com/AntoineRenaud91/mtlog-rs"
+keywords = ["log", "config", "progress", "multi-thread", "concurrent"]
+documentation = "https://docs.rs/mtlog-progress"
+categories = ["config","concurrency"]
+
+[dependencies]
+colored = "2.1.0"
+log = "0.4.22"
+uuid = { version = "1.10.0", features = ["v4"] }
+
+[dev-dependencies]
+mtlog = {path="../mtlog"}
+mtlog-tokio = {path="../mtlog-tokio"}
+tokio = { version = "1.40.0", features = ["full"] }
