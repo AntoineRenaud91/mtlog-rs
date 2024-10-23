@@ -89,7 +89,7 @@ pub struct LogProgressBar {
 impl LogProgressBar {
     pub fn new(n_iter: usize, name: &str) -> Self {
         let pb = Self {
-            n_iter: Arc::new(n_iter),
+            n_iter: Arc::new(n_iter.max(1)),
             name: name.into(),
             current_iter: Arc::new(Mutex::new(0usize)),
             id: Arc::new(Uuid::new_v4()),
