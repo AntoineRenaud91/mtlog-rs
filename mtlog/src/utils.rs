@@ -1,4 +1,4 @@
-use std::{ops::Deref, sync::{mpsc::{channel, Sender}, Arc}, thread::JoinHandle};
+use std::{ops::Deref, sync::{mpsc::{channel, Sender}, Arc, Mutex}, thread::JoinHandle};
 
 use chrono::Utc;
 use colored::Colorize;
@@ -16,7 +16,7 @@ pub struct LogMessage {
 
 pub struct LogSender{
     sender: Sender<Arc<LogMessage>>,
-    handler: Option<JoinHandle<bool>>,
+    handler: Arc<Mutex<Option<JoinHandle<bool>>>>,
     shutdown_initiated: bool,
 }
 impl Deref for LogSender {
@@ -35,11 +35,11 @@ impl Drop for LogSender {
 
 impl LogSender {
     pub fn new(sender: Sender<Arc<LogMessage>>, handler: JoinHandle<bool>) -> Self {
-        Self {sender, handler: Some(handler), shutdown_initiated: false}
+        Self {sender, handler: Arc::new(Mutex::new(Some(handler))), shutdown_initiated: false}
     }
-    pub fn shutdown(&mut self) {
+    pub fn shutdown(&self) {
         self.send(Arc::new(LogMessage {message: "___SHUTDOWN___".into(), level: Level::Info, name: None})).expect("Unable to send shutdown message to file logger thread");
-        if !self.handler.take().unwrap().join().expect("Unable to join file logger thread") {
+        if !self.handler.lock().unwrap().take().unwrap().join().expect("Unable to join file logger thread") {
             panic!("Logger thread shutdown failed");
         };
     }

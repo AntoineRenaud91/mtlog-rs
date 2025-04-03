@@ -73,6 +73,7 @@ impl LogWriter for LogStdout {
             self.line_counter += 1;
         }
         println!("{line}");
+        std::io::stdout().flush().unwrap();
     }
 
     fn progress(&mut self, line: &str, id: Uuid) {
@@ -81,8 +82,10 @@ impl LogWriter for LogStdout {
             print!("\x1B[{pos}A\r");
             print!("{line}");
             print!("\x1B[{pos}B\r");
+            std::io::stdout().flush().unwrap();
         } else {
             println!("{line}");
+            std::io::stdout().flush().unwrap();
             self.line_counter += 1;
             self.progress_positions.insert(id, self.line_counter);
         }

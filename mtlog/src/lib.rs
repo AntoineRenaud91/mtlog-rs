@@ -127,7 +127,14 @@ impl Log for MTLogger {
         });
     }
 
-    fn flush(&self) {}
+    fn flush(&self) {
+        if let Some(s) = GLOBAL_LOG_CONFIG.write().unwrap().sender_stdout.as_deref() {
+            s.shutdown();
+        }
+        if let Some(s) = GLOBAL_LOG_CONFIG.write().unwrap().sender_file.as_deref() {
+            s.shutdown();
+        }
+    }
 }
 
 /// Builder for configuring and initializing the logger.
@@ -154,7 +161,6 @@ impl Default for ConfigBuilder {
 impl ConfigBuilder {
     fn build(self) -> LogConfig {
         let Self { log_file, no_stdout, no_file, log_level, name } = self;
-        let name = name.map(String::from);
         let sender_file = if no_file {
             None
         } else if let Some(log_file) = log_file {

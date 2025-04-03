@@ -1,6 +1,6 @@
 [package]
 name = "mtlog"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 authors = ["Antoine Renaud <antoine.renaud91@gmail.com>"]
 description = "Multi-threaded logger with support for log files."
@@ -14,6 +14,6 @@ categories = ["config","concurrency"]
 
 [dependencies]
 chrono = "0.4.38"
-colored = "2.1.0"
+colored = "3.0.0"
 log = { version = "0.4.22", features = ["std"] }
 uuid = { version = "1.10.0", features = ["v4"] }
