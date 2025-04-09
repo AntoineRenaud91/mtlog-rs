@@ -1,10 +1,10 @@
 [package]
 name = "mtlog-progress"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["Antoine Renaud <antoine.renaud91@gmail.com>"]
 description = "A progress bar implementation working gracefully with mtlog's logger."
-license = "GPL-3.0-only"
+license = "MIT"
 repository = "https://github.com/AntoineRenaud91/mtlog-rs"
 homepage = "https://github.com/AntoineRenaud91/mtlog-rs"
 keywords = ["log", "config", "progress", "multi-thread", "concurrent"]

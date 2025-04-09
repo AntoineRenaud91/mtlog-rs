@@ -1,10 +1,10 @@
 [package]
 name = "mtlog-tokio"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["Antoine Renaud <antoine.renaud91@gmail.com>"]
 description = "Scoped logging for tokio runtimes with support for log files."
-license = "GPL-3.0-only"
+license = "MIT"
 repository = "https://github.com/AntoineRenaud91/mtlog-rs"
 homepage = "https://github.com/AntoineRenaud91/mtlog-rs"
 keywords = ["log", "config", "progress", "multi-thread", "concurrent"]
