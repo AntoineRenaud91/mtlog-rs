@@ -128,11 +128,13 @@ impl Log for MTLogger {
     }
 
     fn flush(&self) {
-        if let Some(s) = GLOBAL_LOG_CONFIG.write().unwrap().sender_stdout.as_deref() {
-            s.shutdown();
-        }
-        if let Some(s) = GLOBAL_LOG_CONFIG.write().unwrap().sender_file.as_deref() {
-            s.shutdown();
+        if let Some(s) = LOG_CONFIG.take() {
+            if let Some(s) = s.sender_stdout.as_deref() {
+                s.shutdown();
+            }
+            if let Some(s) = s.sender_file.as_deref() {
+                s.shutdown();
+            }
         }
     }
 }

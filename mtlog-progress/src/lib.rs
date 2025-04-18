@@ -72,7 +72,7 @@
 //! ```
 
 
-use std::sync::{Arc, Mutex};
+use std::{sync::{Arc, Mutex},time::{Duration, Instant}};
 use colored::Colorize;
 use uuid::Uuid;
 
@@ -83,7 +83,9 @@ pub struct LogProgressBar {
     name: Arc<str>,
     current_iter: Arc<Mutex<usize>>,
     id: Arc<Uuid>,
-    finished: Arc<Mutex<bool>>
+    finished: Arc<Mutex<bool>>,
+    min_duration: Arc<Duration>,
+    last_iter: Arc<Mutex<Instant>>
 }
 
 impl LogProgressBar {
@@ -93,17 +95,23 @@ impl LogProgressBar {
             name: name.into(),
             current_iter: Arc::new(Mutex::new(0usize)),
             id: Arc::new(Uuid::new_v4()),
-            finished: Arc::new(Mutex::new(false))
+            finished: Arc::new(Mutex::new(false)),
+            min_duration: Arc::new(Duration::from_millis(100)),
+            last_iter: Arc::new(Mutex::new(Instant::now()-Duration::from_millis(100))),
         };
         pb.send();
         pb
     }
 
+    pub fn with_min_timestep_ms(mut self, min_duration_ms: f64) -> Self {
+        self.min_duration = Arc::new(Duration::from_micros((min_duration_ms*1000.0).round() as u64));
+        self
+    }
+
     pub fn send(&self) {
-        if *self.finished.lock().unwrap() {
-            log::info!("___PROGRESS___{}___FINISHED",self.id)
-        } else {
-            log::info!("___PROGRESS___{}___{}",self.id,self.format())
+        if !*self.finished.lock().unwrap() && self.last_iter.lock().unwrap().elapsed() > *self.min_duration {
+            log::info!("___PROGRESS___{}___{}",self.id,self.format());
+            *self.last_iter.lock().unwrap() = Instant::now();
         }
     }
 
@@ -133,20 +141,22 @@ impl LogProgressBar {
         )
     }
     
-    pub fn finish(&self) {
+    pub fn finish(&self) { 
         if *self.finished.lock().unwrap() {
             return
         }
-        *self.finished.lock().unwrap() = true;    
-        *self.current_iter.lock().unwrap() = *self.n_iter;
-        self.send();
+        self.set_progress(*self.n_iter);    
+        *self.finished.lock().unwrap() = true;
+        log::info!("___PROGRESS___{}___FINISHED",self.id)
     }
 }
 
 impl Drop for LogProgressBar {
     fn drop(&mut self) {
-        *self.finished.lock().unwrap() = true;
-        self.send();
+        if *self.finished.lock().unwrap() {
+            return
+        }
+        log::info!("___PROGRESS___{}___FINISHED",self.id);
     }
 }
 
