@@ -1,4 +1,8 @@
-use std::{collections::HashMap, fs::File, io::{Seek, SeekFrom, Write}};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{BufWriter, Seek, SeekFrom, Write},
+};
 
 use uuid::Uuid;
 
@@ -6,44 +10,57 @@ pub trait LogWriter {
     fn regular(&mut self, line: &str);
     fn progress(&mut self, line: &str, id: Uuid);
     fn finished(&mut self, id: Uuid);
+    fn flush(&mut self);
 }
 
-fn replace_line_in_file(file:&mut File,line: &str, pos: u64) {
+fn replace_line_in_file(file: &mut BufWriter<File>, line: &str, pos: u64) {
     file.seek(SeekFrom::Start(pos)).unwrap();
-    write!(file,"{line}").unwrap();
+    write!(file, "{line}").unwrap();
     file.seek(SeekFrom::End(0)).unwrap();
 }
 
 pub struct LogFile {
-    file: File,
-    progress_positions: HashMap<Uuid,u64>
+    file: BufWriter<File>,
+    progress_positions: HashMap<Uuid, u64>,
 }
 
 impl LogFile {
-    pub fn new<P:AsRef<std::path::Path>>(path: P) -> Result<Self,std::io::Error> {
-        let mut file = File::options().create(true).truncate(false).write(true).open(&path)?;
+    pub fn new<P: AsRef<std::path::Path>>(path: P) -> Result<Self, std::io::Error> {
+        let mut file = File::options()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&path)?;
         file.seek(SeekFrom::End(0)).unwrap();
-        Ok(Self{file,progress_positions: HashMap::new()})
+        Ok(Self {
+            file: BufWriter::new(file),
+            progress_positions: HashMap::new(),
+        })
     }
 }
 
 impl LogWriter for LogFile {
     fn regular(&mut self, line: &str) {
-        writeln!(self.file,"{line}").unwrap()
+        writeln!(self.file, "{line}").unwrap()
     }
 
     fn progress(&mut self, line: &str, id: Uuid) {
+        self.flush();
         if let Some(pos) = self.progress_positions.get(&id) {
-            replace_line_in_file(&mut self.file,line,*pos);
+            replace_line_in_file(&mut self.file, line, *pos);
         } else {
-            let pos = self.file.metadata().unwrap().len();
+            let pos = self.file.get_ref().metadata().unwrap().len();
             self.progress_positions.insert(id, pos);
-            writeln!(self.file,"{line}").unwrap();
+            writeln!(self.file, "{line}").unwrap();
         }
     }
 
     fn finished(&mut self, id: Uuid) {
         self.progress_positions.remove(&id);
+        self.flush();
+    }
+    fn flush(&mut self) {
+        self.file.flush().unwrap();
     }
 }
 
@@ -58,18 +75,22 @@ fn test_log_file() {
     log_file.progress("LOREM IPSUM", uuid);
     log_file.finished(uuid);
     log_file.regular("test");
-    assert_eq!(std::fs::read_to_string("/tmp/test_log_file.log").unwrap(),"Hello, world!\nLOREM IPSUM\nrust is awesome !\ntest\n");
+    log_file.flush();
+    assert_eq!(
+        std::fs::read_to_string("/tmp/test_log_file.log").unwrap(),
+        "Hello, world!\nLOREM IPSUM\nrust is awesome !\ntest\n"
+    );
 }
 
 #[derive(Default, Debug)]
 pub struct LogStdout {
-    progress_positions: HashMap<Uuid,usize>,
-    line_counter: usize
+    progress_positions: HashMap<Uuid, usize>,
+    line_counter: usize,
 }
 
 impl LogWriter for LogStdout {
     fn regular(&mut self, line: &str) {
-        if !self.progress_positions.is_empty(){
+        if !self.progress_positions.is_empty() {
             self.line_counter += 1;
         }
         println!("{line}");
@@ -78,7 +99,7 @@ impl LogWriter for LogStdout {
 
     fn progress(&mut self, line: &str, id: Uuid) {
         if let Some(pos) = self.progress_positions.get(&id) {
-            let pos = self.line_counter+1-pos;       
+            let pos = self.line_counter + 1 - pos;
             print!("\x1B[{pos}A\r");
             print!("{line}");
             print!("\x1B[{pos}B\r");
@@ -93,12 +114,14 @@ impl LogWriter for LogStdout {
 
     fn finished(&mut self, id: Uuid) {
         self.progress_positions.remove(&id);
-        if self.progress_positions.is_empty(){
+        if self.progress_positions.is_empty() {
             self.line_counter = 0;
         }
     }
+    fn flush(&mut self) {
+        std::io::stdout().flush().unwrap();
+    }
 }
-
 
 #[test]
 fn test_log_stdout() {

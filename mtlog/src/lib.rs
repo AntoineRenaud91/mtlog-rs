@@ -1,3 +1,5 @@
+// mtlog/src/lib.rs
+
 //! # mtlog
 //! Multi-threaded logger with support for progress bars and log files.
 //!
@@ -8,26 +10,26 @@
 //! [dependencies]
 //! mtlog = "0.1.4"
 //! ```
-//! 
+//!
 //! ```rust
 //! use mtlog::logger_config;
-//! 
+//!
 //! logger_config()
 //!    .init_global();
 //! log::info!("Hello, world!");
 //! std::thread::sleep(std::time::Duration::from_millis(1)); // wait for log to flush
 //! ```
-//! 
+//!
 //! ## Multi-threaded logging
 //! ```rust
 //! use mtlog::logger_config;
-//! 
+//!
 //! logger_config()
 //!     .with_name("main")
 //!     .init_global();
-//! 
+//!
 //! log::info!("Hello, world from main thread!");
-//! 
+//!
 //! for i in 0..5 {
 //!     std::thread::spawn(move || {
 //!        logger_config()
@@ -38,35 +40,38 @@
 //! }
 //! std::thread::sleep(std::time::Duration::from_millis(1)); // wait for log to flush
 //! ```
-//! 
+//!
 //! ## Logging to files
 //! Files can be used to log messages. The log file is created if it does not exist and appended to if it does.
 //! Threads can log to different files. If no file is specified in local config, the global file is used.
-//! 
+//!
 //! ```rust
 //! use mtlog::logger_config;
-//! 
+//!
 //! logger_config()
 //!     .with_log_file("/tmp/app.log")
 //!     .expect("Unable to create log file")
 //!     .no_stdout() // disable stdout logging if needed   
 //!     .init_global();
-//! 
+//!
 //! log::info!("Hello, world!");
 //! std::thread::sleep(std::time::Duration::from_millis(1)); // wait for log to flush
 //! assert!(std::fs::read_to_string("/tmp/app.log").unwrap().ends_with("Hello, world!\n"));
 //! ```
 
-
 // mod progress_bar;
+mod config;
 mod log_writer;
 mod utils;
 
-use std::{cell::RefCell, path::Path, sync::{Arc, LazyLock, RwLock}};
-use log_writer::{LogFile, LogStdout};
-use utils::{spawn_log_thread, LogSender, LogMessage};
 use log::{LevelFilter, Log};
-
+use log_writer::{LogFile, LogStdout};
+use std::{
+    cell::RefCell,
+    path::Path,
+    sync::{Arc, LazyLock, RwLock},
+};
+use utils::{LogMessage, LogSender, spawn_log_thread};
 
 /// Configuration for the logger.
 struct LogConfig {
@@ -93,12 +98,10 @@ static GLOBAL_LOG_CONFIG: LazyLock<Arc<RwLock<LogConfig>>> = LazyLock::new(|| {
     }))
 });
 
-
 thread_local! {
     /// Thread-local logger configuration for finer control over logging settings per thread.
     pub static LOG_CONFIG: RefCell<Option<LogConfig>> = const { RefCell::new(None) };
 }
-
 
 /// Custom logger implementation for handling log records.
 struct MTLogger;
@@ -111,18 +114,29 @@ impl Log for MTLogger {
     fn log(&self, record: &log::Record) {
         LOG_CONFIG.with(|local_config| {
             let local_config = local_config.borrow();
-            let global_config = GLOBAL_LOG_CONFIG.read().unwrap();
-            let config = local_config.as_ref().unwrap_or(&global_config);
+            let config = if local_config.is_some() {
+                local_config.as_ref().unwrap()
+            } else {
+                &*GLOBAL_LOG_CONFIG.read().unwrap()
+            };
             let level = record.level();
             if level > config.level {
                 return;
             }
-            let log_message = Arc::new(LogMessage { level, name: config.name.clone(), message: record.args().to_string()});
+            let log_message = Arc::new(LogMessage {
+                level,
+                name: config.name.clone(),
+                message: record.args().to_string(),
+            });
             if let Some(sender) = &config.sender_stdout {
-                sender.send(log_message.clone()).expect("Unable to send log message to stdout logging thread");
+                sender
+                    .send(log_message.clone())
+                    .expect("Unable to send log message to stdout logging thread");
             }
             if let Some(sender) = &config.sender_file {
-                sender.send(log_message).expect("Unable to send log message to file logging thread");
+                sender
+                    .send(log_message)
+                    .expect("Unable to send log message to file logging thread");
             }
         });
     }
@@ -162,7 +176,13 @@ impl Default for ConfigBuilder {
 
 impl ConfigBuilder {
     fn build(self) -> LogConfig {
-        let Self { log_file, no_stdout, no_file, log_level, name } = self;
+        let Self {
+            log_file,
+            no_stdout,
+            no_file,
+            log_level,
+            name,
+        } = self;
         let sender_file = if no_file {
             None
         } else if let Some(log_file) = log_file {
@@ -171,7 +191,9 @@ impl ConfigBuilder {
         } else {
             GLOBAL_LOG_CONFIG.read().unwrap().sender_file.clone()
         };
-        let sender_stdout = if no_stdout {None} else {
+        let sender_stdout = if no_stdout {
+            None
+        } else {
             GLOBAL_LOG_CONFIG.read().unwrap().sender_stdout.clone()
         };
         LogConfig {
@@ -183,36 +205,60 @@ impl ConfigBuilder {
     }
 
     /// Sets a log file.
-    pub fn with_log_file<P: AsRef<Path>>(self, path: P) -> Result<Self,std::io::Error> {
-        Ok(Self { log_file: Some(LogFile::new(path)?), ..self })
+    pub fn with_log_file<P: AsRef<Path>>(self, path: P) -> Result<Self, std::io::Error> {
+        Ok(Self {
+            log_file: Some(LogFile::new(path)?),
+            ..self
+        })
     }
     /// Maybe sets a log file.
-    pub fn maybe_with_log_file<P: AsRef<Path>>(self, path: Option<P>) -> Result<Self,std::io::Error> {
-        Ok(Self { log_file: path.map(|p| LogFile::new(p)).transpose()? , ..self })
+    pub fn maybe_with_log_file<P: AsRef<Path>>(
+        self,
+        path: Option<P>,
+    ) -> Result<Self, std::io::Error> {
+        Ok(Self {
+            log_file: path.map(|p| LogFile::new(p)).transpose()?,
+            ..self
+        })
     }
     /// Ignore stdout logging
     pub fn no_stdout(self) -> Self {
-        Self { no_stdout: true, ..self }
+        Self {
+            no_stdout: true,
+            ..self
+        }
     }
     /// Dynamically set the stdout flag.
     pub fn with_stdout(self, yes: bool) -> Self {
-        Self { no_stdout: !yes, ..self }
+        Self {
+            no_stdout: !yes,
+            ..self
+        }
     }
     /// Ignore file logging
     pub fn no_file(self) -> Self {
-        Self { no_file: true, ..self }
+        Self {
+            no_file: true,
+            ..self
+        }
     }
     /// Sets a log name
     pub fn with_name(self, name: &str) -> Self {
-        Self { name: Some(name.into()), ..self }
+        Self {
+            name: Some(name.into()),
+            ..self
+        }
     }
     /// Maybe sets a log name
     pub fn maybe_with_name(self, name: Option<&str>) -> Self {
-        Self { name: name.map(String::from), ..self }
+        Self {
+            name: name.map(String::from),
+            ..self
+        }
     }
     // Initalize the logger globaly
     pub fn init_global(self) {
-        *GLOBAL_LOG_CONFIG.write().unwrap()=self.build();
+        *GLOBAL_LOG_CONFIG.write().unwrap() = self.build();
     }
     // Initalize the logger for the current thread
     pub fn init_local(self) {
