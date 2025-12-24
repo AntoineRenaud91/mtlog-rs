@@ -6,15 +6,15 @@
 //! // Cargo.toml
 //! ...
 //! [dependencies]
-//! mtlog-progress = "0.1.0"
-//! mtlog = "0.1.4"
+//! mtlog-progress = "0.2.0"
+//! mtlog = "0.2.0"
 //! ```
 //!
 //! ```rust
 //! use mtlog::logger_config;
 //! use mtlog_progress::LogProgressBar;
 //!
-//! logger_config()
+//! let _guard = logger_config()
 //!     .init_global();
 //!
 //! let h = std::thread::spawn(|| {
@@ -29,7 +29,7 @@
 //! });
 //! log::info!("This log goes below the progress bar");
 //! h.join().unwrap(); // the progress bar continue to work at it's line position
-//!
+//! // guard ensures logs are flushed when dropped
 //! ```
 //! ## Usage with tokio tasks
 //!
@@ -186,10 +186,39 @@ impl Drop for LogProgressBar {
 #[test]
 fn test_progress_bar() {
     use mtlog::logger_config;
-    logger_config().init_global();
-    let pb = LogProgressBar::new(10000000, "Test");
-    for _ in 0..10000000 {
+    let _guard = logger_config().init_global();
+    let n = 5000000;
+    let handle = std::thread::spawn(move || {
+        let pb = LogProgressBar::new(n, "Background Task");
+        for _ in 0..n / 3 {
+            pb.inc(1);
+        }
+        pb.set_progress(0);
+        for _ in 0..n / 3 {
+            pb.inc(1);
+        }
+        pb.finish();
+    });
+    std::thread::sleep(Duration::from_millis(200));
+    let pb = LogProgressBar::new(n, "Main Task");
+    log::info!("Starting main task");
+    for i in 0..n {
+        if i == 10 {
+            log::info!("Main task is at 10 iterations");
+        }
         pb.inc(1);
     }
     pb.finish();
+    handle.join().unwrap();
+    std::thread::sleep(Duration::from_millis(200));
+    let pb_outer = LogProgressBar::new(10, "Outer loop");
+    for _ in 0..10 {
+        let pb_inner = LogProgressBar::new(n / 10, "Inner loop");
+        for _ in 0..n / 10 {
+            pb_inner.inc(1);
+        }
+        pb_inner.finish();
+        pb_outer.inc(1);
+    }
+    pb_outer.finish();
 }

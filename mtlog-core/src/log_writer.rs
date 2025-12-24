@@ -59,27 +59,10 @@ impl LogWriter for LogFile {
         self.progress_positions.remove(&id);
         self.flush();
     }
+
     fn flush(&mut self) {
         self.file.flush().unwrap();
     }
-}
-
-#[test]
-fn test_log_file() {
-    std::fs::remove_file("/tmp/test_log_file.log").ok();
-    let mut log_file = LogFile::new("/tmp/test_log_file.log").unwrap();
-    let uuid = Uuid::default();
-    log_file.regular("Hello, world!");
-    log_file.progress("lorem ipsum", uuid);
-    log_file.regular("rust is awesome !");
-    log_file.progress("LOREM IPSUM", uuid);
-    log_file.finished(uuid);
-    log_file.regular("test");
-    log_file.flush();
-    assert_eq!(
-        std::fs::read_to_string("/tmp/test_log_file.log").unwrap(),
-        "Hello, world!\nLOREM IPSUM\nrust is awesome !\ntest\n"
-    );
 }
 
 #[derive(Default, Debug)]
@@ -99,10 +82,9 @@ impl LogWriter for LogStdout {
 
     fn progress(&mut self, line: &str, id: Uuid) {
         if let Some(pos) = self.progress_positions.get(&id) {
-            let pos = self.line_counter + 1 - pos;
-            print!("\x1B[{pos}A\r");
-            print!("{line}");
-            print!("\x1B[{pos}B\r");
+            let offset = self.line_counter + 1 - pos;
+            // Move up, clear line, write content, move back down
+            print!("\x1B[{offset}A\x1B[2K\r{line}\x1B[{offset}B\r");
             std::io::stdout().flush().unwrap();
         } else {
             println!("{line}");
@@ -113,28 +95,71 @@ impl LogWriter for LogStdout {
     }
 
     fn finished(&mut self, id: Uuid) {
-        self.progress_positions.remove(&id);
+        if let Some(removed_pos) = self.progress_positions.remove(&id) {
+            let offset = self.line_counter + 1 - removed_pos;
+            // Move up to the line, delete it (shifts content below up), move back down
+            if offset > 1 {
+                print!("\x1B[{offset}A\x1B[M\x1B[{}B", offset - 1);
+            } else {
+                print!("\x1B[{offset}A\x1B[M");
+            }
+            std::io::stdout().flush().unwrap();
+
+            // Update positions of progress bars that were below the removed one
+            for pos in self.progress_positions.values_mut() {
+                if *pos > removed_pos {
+                    *pos -= 1;
+                }
+            }
+
+            // Decrement line counter
+            self.line_counter = self.line_counter.saturating_sub(1);
+        }
         if self.progress_positions.is_empty() {
             self.line_counter = 0;
         }
     }
+
     fn flush(&mut self) {
         std::io::stdout().flush().unwrap();
     }
 }
 
-#[test]
-fn test_log_stdout() {
-    let mut log_stdout = LogStdout::default();
-    let uuid_1 = Uuid::new_v4();
-    let uuid_2 = Uuid::new_v4();
-    log_stdout.regular("Hello, world!");
-    log_stdout.progress("lorem ipsum", uuid_1);
-    log_stdout.progress("ipsum lorem", uuid_2);
-    log_stdout.regular("rust is awesome !");
-    log_stdout.progress("LOREM IPSUM", uuid_2);
-    log_stdout.finished(uuid_2);
-    log_stdout.regular("test");
-    log_stdout.progress("LOREM IPSUM", uuid_1);
-    log_stdout.finished(uuid_1);
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_log_file() {
+        std::fs::remove_file("/tmp/test_log_file.log").ok();
+        let mut log_file = LogFile::new("/tmp/test_log_file.log").unwrap();
+        let uuid = Uuid::default();
+        log_file.regular("Hello, world!");
+        log_file.progress("lorem ipsum", uuid);
+        log_file.regular("rust is awesome !");
+        log_file.progress("LOREM IPSUM", uuid);
+        log_file.finished(uuid);
+        log_file.regular("test");
+        log_file.flush();
+        assert_eq!(
+            std::fs::read_to_string("/tmp/test_log_file.log").unwrap(),
+            "Hello, world!\nLOREM IPSUM\nrust is awesome !\ntest\n"
+        );
+    }
+
+    #[test]
+    fn test_log_stdout() {
+        let mut log_stdout = LogStdout::default();
+        let uuid_1 = Uuid::new_v4();
+        let uuid_2 = Uuid::new_v4();
+        log_stdout.regular("Hello, world!");
+        log_stdout.progress("lorem ipsum", uuid_1);
+        log_stdout.progress("ipsum lorem", uuid_2);
+        log_stdout.regular("rust is awesome !");
+        log_stdout.progress("LOREM IPSUM", uuid_2);
+        log_stdout.finished(uuid_2);
+        log_stdout.regular("test");
+        log_stdout.progress("LOREM IPSUM", uuid_1);
+        log_stdout.finished(uuid_1);
+    }
 }

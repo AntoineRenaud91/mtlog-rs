@@ -1,3 +1,3 @@
 [workspace]
-members = ["mtlog", "mtlog-progress", "mtlog-tokio"]
+members = ["mtlog", "mtlog-core", "mtlog-progress", "mtlog-tokio"]
 resolver = "2"

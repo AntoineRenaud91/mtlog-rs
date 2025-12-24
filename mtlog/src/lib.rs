@@ -1,5 +1,3 @@
-// mtlog/src/lib.rs
-
 //! # mtlog
 //! Multi-threaded logger with support for progress bars and log files.
 //!
@@ -8,37 +6,38 @@
 //! // Cargo.toml
 //! ...
 //! [dependencies]
-//! mtlog = "0.1.4"
+//! mtlog = "0.2.0"
 //! ```
 //!
 //! ```rust
 //! use mtlog::logger_config;
 //!
-//! logger_config()
+//! let _guard = logger_config()
 //!    .init_global();
 //! log::info!("Hello, world!");
-//! std::thread::sleep(std::time::Duration::from_millis(1)); // wait for log to flush
+//! // guard ensures logs are flushed when dropped
 //! ```
 //!
 //! ## Multi-threaded logging
 //! ```rust
 //! use mtlog::logger_config;
 //!
-//! logger_config()
+//! let _guard = logger_config()
 //!     .with_name("main")
 //!     .init_global();
 //!
 //! log::info!("Hello, world from main thread!");
 //!
-//! for i in 0..5 {
+//! let handles: Vec<_> = (0..5).map(|i| {
 //!     std::thread::spawn(move || {
 //!        logger_config()
 //!             .with_name(&format!("thread {i}"))
 //!             .init_local();
-//!     log::warn!("Hello, world from thread {i}!")
-//!    });
-//! }
-//! std::thread::sleep(std::time::Duration::from_millis(1)); // wait for log to flush
+//!         log::warn!("Hello, world from thread {i}!")
+//!     })
+//! }).collect();
+//! for h in handles { h.join().unwrap(); }
+//! // guard ensures logs are flushed when dropped
 //! ```
 //!
 //! ## Logging to files
@@ -48,30 +47,26 @@
 //! ```rust
 //! use mtlog::logger_config;
 //!
-//! logger_config()
+//! let _guard = logger_config()
 //!     .with_log_file("/tmp/app.log")
 //!     .expect("Unable to create log file")
-//!     .no_stdout() // disable stdout logging if needed   
+//!     .no_stdout() // disable stdout logging if needed
 //!     .init_global();
 //!
 //! log::info!("Hello, world!");
-//! std::thread::sleep(std::time::Duration::from_millis(1)); // wait for log to flush
+//! drop(_guard); // ensure logs are flushed
 //! assert!(std::fs::read_to_string("/tmp/app.log").unwrap().ends_with("Hello, world!\n"));
 //! ```
 
-// mod progress_bar;
-mod config;
-mod log_writer;
-mod utils;
-
 use log::{LevelFilter, Log};
-use log_writer::{LogFile, LogStdout};
+use mtlog_core::{LogFile, LogMessage, LogSender, LogStdout, spawn_log_thread};
+
+pub use mtlog_core::LoggerGuard;
 use std::{
     cell::RefCell,
     path::Path,
     sync::{Arc, LazyLock, RwLock},
 };
-use utils::{LogMessage, LogSender, spawn_log_thread};
 
 /// Configuration for the logger.
 struct LogConfig {
@@ -129,28 +124,15 @@ impl Log for MTLogger {
                 message: record.args().to_string(),
             });
             if let Some(sender) = &config.sender_stdout {
-                sender
-                    .send(log_message.clone())
-                    .expect("Unable to send log message to stdout logging thread");
+                sender.send(log_message.clone()).ok();
             }
             if let Some(sender) = &config.sender_file {
-                sender
-                    .send(log_message)
-                    .expect("Unable to send log message to file logging thread");
+                sender.send(log_message).ok();
             }
         });
     }
 
-    fn flush(&self) {
-        if let Some(s) = LOG_CONFIG.take() {
-            if let Some(s) = s.sender_stdout.as_deref() {
-                s.shutdown();
-            }
-            if let Some(s) = s.sender_file.as_deref() {
-                s.shutdown();
-            }
-        }
-    }
+    fn flush(&self) {}
 }
 
 /// Builder for configuring and initializing the logger.
@@ -256,9 +238,20 @@ impl ConfigBuilder {
             ..self
         }
     }
-    // Initalize the logger globaly
-    pub fn init_global(self) {
-        *GLOBAL_LOG_CONFIG.write().unwrap() = self.build();
+    /// Initialize the logger globally.
+    /// Returns a guard that will flush and shutdown the logger when dropped.
+    #[must_use = "LoggerGuard must be kept alive to ensure logging works. Do \"let _guard = logger_config().init_global();\""]
+    pub fn init_global(self) -> LoggerGuard {
+        let config = self.build();
+        let mut senders = Vec::new();
+        if let Some(ref sender) = config.sender_stdout {
+            senders.push(Arc::clone(sender));
+        }
+        if let Some(ref sender) = config.sender_file {
+            senders.push(Arc::clone(sender));
+        }
+        *GLOBAL_LOG_CONFIG.write().unwrap() = config;
+        LoggerGuard::new(senders)
     }
     // Initalize the logger for the current thread
     pub fn init_local(self) {

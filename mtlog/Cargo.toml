@@ -1,6 +1,6 @@
 [package]
 name = "mtlog"
-version = "0.1.8"
+version = "0.2.0"
 edition = "2024"
 authors = ["Antoine Renaud <antoine.renaud91@gmail.com>"]
 description = "Multi-threaded logger with support for log files."
@@ -9,13 +9,8 @@ repository = "https://github.com/AntoineRenaud91/mtlog-rs"
 homepage = "https://github.com/AntoineRenaud91/mtlog-rs"
 keywords = ["log", "config", "progress", "multi-thread", "concurrent"]
 documentation = "https://docs.rs/mtlog"
-categories = ["config","concurrency"]
-
+categories = ["config", "concurrency"]
 
 [dependencies]
-chrono = "0.4.38"
-colored = "3.0.0"
-crossbeam-channel = "0.5.15"
-derive_from_env = "0.1.3"
 log = { version = "0.4.22", features = ["std"] }
-uuid = { version = "1.10.0", features = ["v4"] }
+mtlog-core = { path = "../mtlog-core" }

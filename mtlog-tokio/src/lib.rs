@@ -6,54 +6,55 @@
 //! // Cargo.toml
 //! ...
 //! [dependencies]
-//! mtlog-tokio = "0.1.0"
+//! mtlog-tokio = "0.2.0"
 //! tokio = {version = "1.40.0", features = ["full"]}
 //! ```
-//! 
+//!
 //! ```rust
 //! use mtlog_tokio::logger_config;
-//! 
+//!
 //! #[tokio::main]
 //! async fn main() {
 //!     logger_config()
 //!         .scope_global(async move {
 //!             log::info!("Hello, world!");
-//!             tokio::time::sleep(std::time::Duration::from_millis(1)).await; // wait for log to flush
+//!             // logs are automatically flushed when scope_global completes
 //!         }).await;
 //! }
 //! ```
-//! 
+//!
 //! ## Multi-threaded logging
 //! ```rust
 //! use mtlog_tokio::logger_config;
-//! 
+//!
 //! #[tokio::main]
 //! async fn main() {
 //!     logger_config()
 //!         .with_name("main")
 //!         .scope_global(async move {
 //!             log::info!("Hello, world from main thread!");
-//!             for i in 0..5 {
+//!             let handles: Vec<_> = (0..5).map(|i| {
 //!                 tokio::spawn(async move {
 //!                     logger_config()
 //!                         .with_name(&format!("thread {i}"))
 //!                         .scope_local(async move {
 //!                             log::warn!("Hello, world from thread {i}!")
-//!                         }).await;        
-//!                 });
-//!             }
-//!             tokio::time::sleep(std::time::Duration::from_millis(1)).await; // wait for log to flush
+//!                         }).await;
+//!                 })
+//!             }).collect();
+//!             for h in handles { h.await.unwrap(); }
+//!             // logs are automatically flushed when scope_global completes
 //!         }).await;
 //! }
 //! ```
-//! 
+//!
 //! ## Logging to files
 //! Files can be used to log messages. The log file is created if it does not exist and appended to if it does.
 //! Threads can log to different files. If no file is specified in local config, the global file is used.
-//! 
+//!
 //! ```rust
 //! use mtlog_tokio::logger_config;
-//! 
+//!
 //! #[tokio::main]
 //! async fn main() {
 //!     logger_config()
@@ -62,21 +63,19 @@
 //!         .no_stdout() // disable stdout logging if needed
 //!         .scope_global(async move {
 //!             log::info!("Hello, world!");
-//!             tokio::time::sleep(std::time::Duration::from_millis(1)).await; // wait for log to flush
+//!             // logs are automatically flushed when scope_global completes
 //!         }).await;
 //!     assert!(std::fs::read_to_string("/tmp/app.log").unwrap().ends_with("Hello, world!\n"));
 //! }
 //! ```
 
-
-mod log_writer;
-mod utils;
-
-use std::{future::Future, path::Path, sync::{Arc, LazyLock, RwLock}};
-use log_writer::{LogFile, LogStdout};
-use utils::{spawn_log_thread, LogSender, LogMessage};
 use log::{LevelFilter, Log};
-
+use mtlog_core::{spawn_log_thread, LogFile, LogMessage, LogSender, LogStdout};
+use std::{
+    future::Future,
+    path::Path,
+    sync::{Arc, LazyLock, RwLock},
+};
 
 /// Configuration for the logger.
 #[derive(Clone)]
@@ -104,12 +103,10 @@ static GLOBAL_LOG_CONFIG: LazyLock<Arc<RwLock<LogConfig>>> = LazyLock::new(|| {
     }))
 });
 
-
 tokio::task_local! {
     /// Thread-local logger configuration for finer control over logging settings per thread.
     pub static LOG_CONFIG: LogConfig;
 }
-
 
 /// Custom logger implementation for handling log records.
 struct MTLogger;
@@ -125,12 +122,20 @@ impl Log for MTLogger {
             if level > config.level {
                 return;
             }
-            let log_message = Arc::new(LogMessage { level, name: config.name.clone(), message: record.args().to_string()});
+            let log_message = Arc::new(LogMessage {
+                level,
+                name: config.name.clone(),
+                message: record.args().to_string(),
+            });
             if let Some(sender) = &config.sender_stdout {
-                sender.send(log_message.clone()).expect("Unable to send log message to stdout logging thread");
+                sender
+                    .send(log_message.clone())
+                    .expect("Unable to send log message to stdout logging thread");
             }
             if let Some(sender) = &config.sender_file {
-                sender.send(log_message).expect("Unable to send log message to file logging thread");
+                sender
+                    .send(log_message)
+                    .expect("Unable to send log message to file logging thread");
             }
         });
     }
@@ -168,7 +173,13 @@ impl Default for ConfigBuilder {
 
 impl ConfigBuilder {
     fn build(self) -> LogConfig {
-        let Self { log_file, no_stdout, no_file, log_level, name } = self;
+        let Self {
+            log_file,
+            no_stdout,
+            no_file,
+            log_level,
+            name,
+        } = self;
         let sender_file = if no_file {
             None
         } else if let Some(log_file) = log_file {
@@ -177,7 +188,9 @@ impl ConfigBuilder {
         } else {
             GLOBAL_LOG_CONFIG.read().unwrap().sender_file.clone()
         };
-        let sender_stdout = if no_stdout {None} else {
+        let sender_stdout = if no_stdout {
+            None
+        } else {
             GLOBAL_LOG_CONFIG.read().unwrap().sender_stdout.clone()
         };
         LogConfig {
@@ -189,38 +202,75 @@ impl ConfigBuilder {
     }
 
     /// Sets a log file.
-    pub fn with_log_file<P: AsRef<Path>>(self, path: P) -> Result<Self,std::io::Error> {
-        Ok(Self { log_file: Some(LogFile::new(path)?), ..self })
+    pub fn with_log_file<P: AsRef<Path>>(self, path: P) -> Result<Self, std::io::Error> {
+        Ok(Self {
+            log_file: Some(LogFile::new(path)?),
+            ..self
+        })
     }
     /// Maybe sets a log file.
-    pub fn maybe_with_log_file<P: AsRef<Path>>(self, path: Option<P>) -> Result<Self,std::io::Error> {
-        Ok(Self { log_file: path.map(|p| LogFile::new(p)).transpose()? , ..self })
+    pub fn maybe_with_log_file<P: AsRef<Path>>(
+        self,
+        path: Option<P>,
+    ) -> Result<Self, std::io::Error> {
+        Ok(Self {
+            log_file: path.map(|p| LogFile::new(p)).transpose()?,
+            ..self
+        })
     }
     /// Ignore stdout logging
     pub fn no_stdout(self) -> Self {
-        Self { no_stdout: true, ..self }
+        Self {
+            no_stdout: true,
+            ..self
+        }
     }
     /// Dynamically set the stdout flag.
     pub fn with_stdout(self, yes: bool) -> Self {
-        Self { no_stdout: !yes, ..self }
+        Self {
+            no_stdout: !yes,
+            ..self
+        }
     }
     /// Ignore file logging
     pub fn no_file(self) -> Self {
-        Self { no_file: true, ..self }
+        Self {
+            no_file: true,
+            ..self
+        }
     }
     /// Sets a log name
     pub fn with_name(self, name: &str) -> Self {
-        Self { name: Some(name.into()), ..self }
+        Self {
+            name: Some(name.into()),
+            ..self
+        }
     }
     /// Maybe sets a log name
     pub fn maybe_with_name(self, name: Option<&str>) -> Self {
-        Self { name: name.map(String::from), ..self }
+        Self {
+            name: name.map(String::from),
+            ..self
+        }
     }
-    // Initalize the logger globaly
-    pub async fn scope_global<F:Future>(self, f: F)-> F::Output {
+    /// Initialize the logger globally and run the provided future.
+    /// The logger is automatically shut down when the future completes.
+    pub async fn scope_global<F: Future>(self, f: F) -> F::Output {
         let config = self.build();
-        *GLOBAL_LOG_CONFIG.write().unwrap()=config.clone();
-        LOG_CONFIG.scope(config, f).await
+        let mut senders = Vec::new();
+        if let Some(ref sender) = config.sender_stdout {
+            senders.push(Arc::clone(sender));
+        }
+        if let Some(ref sender) = config.sender_file {
+            senders.push(Arc::clone(sender));
+        }
+        *GLOBAL_LOG_CONFIG.write().unwrap() = config.clone();
+        let result = LOG_CONFIG.scope(config, f).await;
+        // Shutdown all senders to ensure logs are flushed
+        for sender in senders {
+            sender.shutdown();
+        }
+        result
     }
     // Initalize the logger for the current thread
     pub async fn scope_local<F: Future>(self, f: F) -> F::Output {

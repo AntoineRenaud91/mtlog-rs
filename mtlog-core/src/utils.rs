@@ -1,5 +1,3 @@
-// mtlog/src/utils.rs
-
 use std::{
     ops::Deref,
     sync::{Arc, Mutex},
@@ -15,6 +13,27 @@ use uuid::Uuid;
 
 use crate::{config::MTLOG_CONFIG, log_writer::LogWriter};
 
+/// Guard that ensures the logger is properly shut down when dropped.
+/// Hold this guard for the lifetime of your logging session.
+pub struct LoggerGuard {
+    senders: Vec<Arc<LogSender>>,
+}
+
+impl LoggerGuard {
+    /// Creates a new LoggerGuard with the given senders.
+    pub fn new(senders: Vec<Arc<LogSender>>) -> Self {
+        Self { senders }
+    }
+}
+
+impl Drop for LoggerGuard {
+    fn drop(&mut self) {
+        for sender in &self.senders {
+            sender.shutdown();
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct LogMessage {
     pub message: String,
@@ -25,19 +44,18 @@ pub struct LogMessage {
 pub struct LogSender {
     sender: Sender<Arc<LogMessage>>,
     handler: Arc<Mutex<Option<JoinHandle<bool>>>>,
-    shutdown_initiated: bool,
 }
+
 impl Deref for LogSender {
     type Target = Sender<Arc<LogMessage>>;
     fn deref(&self) -> &Self::Target {
         &self.sender
     }
 }
+
 impl Drop for LogSender {
     fn drop(&mut self) {
-        if !self.shutdown_initiated {
-            self.shutdown();
-        }
+        self.shutdown();
     }
 }
 
@@ -46,38 +64,35 @@ impl LogSender {
         Self {
             sender,
             handler: Arc::new(Mutex::new(Some(handler))),
-            shutdown_initiated: false,
         }
     }
+
+    /// Shuts down the logger thread and waits for it to finish.
+    /// This method is idempotent - calling it multiple times is safe.
     pub fn shutdown(&self) {
-        self.send(Arc::new(LogMessage {
-            message: "___SHUTDOWN___".into(),
-            level: Level::Info,
-            name: None,
-        }))
-        .expect("Unable to send shutdown message to file logger thread");
-        if !self
-            .handler
-            .lock()
-            .unwrap()
-            .take()
-            .unwrap()
-            .join()
-            .expect("Unable to join file logger thread")
-        {
-            panic!("Logger thread shutdown failed");
-        };
+        let mut guard = self.handler.lock().unwrap();
+        if let Some(handle) = guard.take() {
+            // Send shutdown message - ignore error if channel is already closed
+            let _ = self.send(Arc::new(LogMessage {
+                message: "___SHUTDOWN___".into(),
+                level: Level::Info,
+                name: None,
+            }));
+            if !handle.join().expect("Unable to join logger thread") {
+                panic!("Logger thread shutdown failed");
+            }
+        }
     }
 }
 
 fn format_log(message: &str, level: Level, name: Option<&str>) -> String {
     let time = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3f");
     let level = match level {
-        log::Level::Error => "ERROR".red(),
-        log::Level::Warn => "WARN".yellow(),
-        log::Level::Info => "INFO".green(),
-        log::Level::Debug => "DEBUG".blue(),
-        log::Level::Trace => "TRACE".purple(),
+        Level::Error => "ERROR".red(),
+        Level::Warn => "WARN".yellow(),
+        Level::Info => "INFO".green(),
+        Level::Debug => "DEBUG".blue(),
+        Level::Trace => "TRACE".purple(),
     };
     if let Some(name) = name {
         format!("[{time} {name} {level}] {message}")

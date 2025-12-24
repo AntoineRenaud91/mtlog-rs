@@ -6,7 +6,7 @@ Multi-threaded logger with support for progress bars and log files.
 // Cargo.toml
 ...
 [dependencies]
-mtlog = "0.1.0"
+mtlog = "0.2.0"
 ```
 
 ```rust
@@ -15,7 +15,6 @@ use mtlog::logger_config;
 logger_config()
    .init_global();
 log::info!("Hello, world!");
-std::thread::sleep(std::time::Duration::from_millis(1)); // wait for log to flush
 ```
 
 ## Multi-threaded logging
@@ -36,7 +35,6 @@ for i in 0..5 {
     log::warn!("Hello, world from thread {i}!")
    });
 }
-std::thread::sleep(std::time::Duration::from_millis(1)); // wait for log to flush
 ```
 
 ## Logging to files
@@ -53,7 +51,6 @@ logger_config()
     .init_global();
 
 log::info!("Hello, world!");
-std::thread::sleep(std::time::Duration::from_millis(1)); // wait for log to flush
 assert!(std::fs::read_to_string("/tmp/app.log").unwrap().ends_with("Hello, world!\n"));
 ```
 
