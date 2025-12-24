@@ -13,7 +13,7 @@ categories = ["config", "concurrency"]
 
 [dependencies]
 log = { version = "0.4.22", features = ["std"] }
-mtlog-core = { path = "../mtlog-core" }
+mtlog-core = {version="0.1.0", path = "../mtlog-core" }
 tokio = { version = "1.40.0", features = ["rt"] }
 
 [dev-dependencies]
