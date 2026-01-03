@@ -69,6 +69,35 @@
 //!         }).await;
 //! }
 //! ```
+//!
+//! ## Iterator Progress Tracking
+//!
+//! Use the `.progress()` method on iterators for automatic progress tracking:
+//!
+//! ```rust
+//! use mtlog::logger_config;
+//! use mtlog_progress::ProgressIteratorExt;
+//!
+//! let _guard = logger_config().init_global();
+//!
+//! // For ExactSizeIterator, automatically detects length
+//! (0..100)
+//!     .progress("Processing")
+//!     .for_each(|i| {
+//!         // Work with i
+//!     });
+//!
+//! // For any iterator, provide length manually
+//! (0..=99)
+//!     .progress_with(100, "Processing")
+//!     .for_each(|_| {
+//!         // Work
+//!     });
+//! ```
+
+mod iter;
+
+pub use iter::{LogProgressIterator, ProgressIteratorExt};
 
 use colored::Colorize;
 use std::{

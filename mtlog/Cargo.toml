@@ -1,6 +1,6 @@
 [package]
 name = "mtlog"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 authors = ["Antoine Renaud <antoine.renaud91@gmail.com>"]
 description = "Multi-threaded logger with support for log files."

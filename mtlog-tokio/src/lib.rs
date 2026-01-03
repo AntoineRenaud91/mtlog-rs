@@ -6,8 +6,8 @@
 //! // Cargo.toml
 //! ...
 //! [dependencies]
-//! mtlog-tokio = "0.2.0"
-//! tokio = {version = "1.40.0", features = ["full"]}
+//! mtlog-tokio = "0.2"
+//! tokio = {version = "1", features = ["full"]}
 //! ```
 //!
 //! ```rust
@@ -70,7 +70,9 @@
 //! ```
 
 use log::{LevelFilter, Log};
-use mtlog_core::{spawn_log_thread, LogFile, LogMessage, LogSender, LogStdout};
+use mtlog_core::{
+    spawn_log_thread_file, spawn_log_thread_stdout, LogFile, LogMessage, LogSender, LogStdout,
+};
 use std::{
     future::Future,
     path::Path,
@@ -94,7 +96,7 @@ struct LogConfig {
 static GLOBAL_LOG_CONFIG: LazyLock<Arc<RwLock<LogConfig>>> = LazyLock::new(|| {
     log::set_boxed_logger(Box::new(MTLogger)).unwrap();
     log::set_max_level(LevelFilter::Info);
-    let sender = spawn_log_thread(LogStdout::default());
+    let sender = spawn_log_thread_stdout(LogStdout::default());
     Arc::new(RwLock::new(LogConfig {
         sender_stdout: Some(Arc::new(sender)),
         sender_file: None,
@@ -183,7 +185,7 @@ impl ConfigBuilder {
         let sender_file = if no_file {
             None
         } else if let Some(log_file) = log_file {
-            let sender = spawn_log_thread(log_file);
+            let sender = spawn_log_thread_file(log_file);
             Some(Arc::new(sender))
         } else {
             GLOBAL_LOG_CONFIG.read().unwrap().sender_file.clone()

@@ -11,7 +11,10 @@ use crossbeam_channel::{RecvTimeoutError, Sender, unbounded};
 use log::Level;
 use uuid::Uuid;
 
-use crate::{config::MTLOG_CONFIG, log_writer::LogWriter};
+use crate::{
+    config::MTLOG_CONFIG,
+    log_writer::{LogFile, LogStdout, LogWriter},
+};
 
 /// Guard that ensures the logger is properly shut down when dropped.
 /// Hold this guard for the lifetime of your logging session.
@@ -20,7 +23,6 @@ pub struct LoggerGuard {
 }
 
 impl LoggerGuard {
-    /// Creates a new LoggerGuard with the given senders.
     pub fn new(senders: Vec<Arc<LogSender>>) -> Self {
         Self { senders }
     }
@@ -67,8 +69,6 @@ impl LogSender {
         }
     }
 
-    /// Shuts down the logger thread and waits for it to finish.
-    /// This method is idempotent - calling it multiple times is safe.
     pub fn shutdown(&self) {
         let mut guard = self.handler.lock().unwrap();
         if let Some(handle) = guard.take() {
@@ -101,7 +101,43 @@ fn format_log(message: &str, level: Level, name: Option<&str>) -> String {
     }
 }
 
-pub fn spawn_log_thread<W: LogWriter + Send + 'static>(mut writer: W) -> LogSender {
+pub fn spawn_log_thread_stdout(mut writer: LogStdout) -> LogSender {
+    let (sender, receiver) = unbounded::<Arc<LogMessage>>();
+    let handler = std::thread::spawn(move || {
+        // No batching for stdout - process messages immediately
+        while let Ok(log_message) = receiver.recv() {
+            let LogMessage {
+                message,
+                level,
+                name,
+            } = log_message.as_ref();
+
+            if message == "___SHUTDOWN___" {
+                break;
+            }
+
+            if message.starts_with("___PROGRESS___") {
+                let message = message.trim_start_matches("___PROGRESS___");
+                if let Some((uuid_str, message)) = message.split_once("___")
+                    && let Ok(uuid) = Uuid::parse_str(uuid_str)
+                {
+                    if message == "FINISHED" {
+                        writer.finished(uuid);
+                    } else {
+                        writer.progress(message, uuid);
+                    }
+                }
+            } else {
+                let message = format_log(message, *level, name.as_deref());
+                writer.regular(&message);
+            }
+        }
+        true
+    });
+    LogSender::new(sender, handler)
+}
+
+pub fn spawn_log_thread_file(mut writer: LogFile) -> LogSender {
     let (sender, receiver) = unbounded::<Arc<LogMessage>>();
     let handler = std::thread::spawn(move || {
         let mut batch = Vec::with_capacity(32);
@@ -120,7 +156,6 @@ pub fn spawn_log_thread<W: LogWriter + Send + 'static>(mut writer: W) -> LogSend
             match receiver.recv_timeout(timeout) {
                 Ok(msg) => {
                     batch.push(msg);
-                    // Try to collect more messages without blocking
                     while let Ok(msg) = receiver.try_recv() {
                         batch.push(msg);
                         if batch.len() >= 32 {
@@ -129,15 +164,13 @@ pub fn spawn_log_thread<W: LogWriter + Send + 'static>(mut writer: W) -> LogSend
                     }
                 }
                 Err(RecvTimeoutError::Timeout) => {
-                    // Timeout reached - flush if needed
-                    if last_flush.elapsed() >= flush_interval && !batch.is_empty() {
-                        // Process any pending messages
-                    } else if batch.is_empty() {
-                        // No messages to process, but we should flush the writer
+                    // Timeout - no messages received, batch is empty
+                    // Only flush if the flush interval has elapsed
+                    if last_flush.elapsed() >= flush_interval {
                         writer.flush();
                         last_flush = Instant::now();
-                        continue;
                     }
+                    continue;
                 }
                 Err(RecvTimeoutError::Disconnected) => break,
             }

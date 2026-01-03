@@ -1,6 +1,6 @@
 [package]
 name = "mtlog-progress"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 authors = ["Antoine Renaud <antoine.renaud91@gmail.com>"]
 description = "A progress bar implementation working gracefully with mtlog's logger."
@@ -19,4 +19,4 @@ uuid = { version = "1.10.0", features = ["v4"] }
 [dev-dependencies]
 mtlog = {path="../mtlog"}
 mtlog-tokio = {path="../mtlog-tokio"}
-tokio = { version = "1.40.0", features = ["full"] }
+tokio = { version = "1.49.0", features = ["full"] }

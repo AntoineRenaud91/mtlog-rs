@@ -59,7 +59,9 @@
 //! ```
 
 use log::{LevelFilter, Log};
-use mtlog_core::{LogFile, LogMessage, LogSender, LogStdout, spawn_log_thread};
+use mtlog_core::{
+    LogFile, LogMessage, LogSender, LogStdout, spawn_log_thread_file, spawn_log_thread_stdout,
+};
 
 pub use mtlog_core::LoggerGuard;
 use std::{
@@ -84,7 +86,7 @@ struct LogConfig {
 static GLOBAL_LOG_CONFIG: LazyLock<Arc<RwLock<LogConfig>>> = LazyLock::new(|| {
     log::set_boxed_logger(Box::new(MTLogger)).unwrap();
     log::set_max_level(LevelFilter::Info);
-    let sender = spawn_log_thread(LogStdout::default());
+    let sender = spawn_log_thread_stdout(LogStdout::default());
     Arc::new(RwLock::new(LogConfig {
         sender_stdout: Some(Arc::new(sender)),
         sender_file: None,
@@ -95,7 +97,7 @@ static GLOBAL_LOG_CONFIG: LazyLock<Arc<RwLock<LogConfig>>> = LazyLock::new(|| {
 
 thread_local! {
     /// Thread-local logger configuration for finer control over logging settings per thread.
-    pub static LOG_CONFIG: RefCell<Option<LogConfig>> = const { RefCell::new(None) };
+    static LOG_CONFIG: RefCell<Option<LogConfig>> = const { RefCell::new(None) };
 }
 
 /// Custom logger implementation for handling log records.
@@ -168,7 +170,7 @@ impl ConfigBuilder {
         let sender_file = if no_file {
             None
         } else if let Some(log_file) = log_file {
-            let sender = spawn_log_thread(log_file);
+            let sender = spawn_log_thread_file(log_file);
             Some(Arc::new(sender))
         } else {
             GLOBAL_LOG_CONFIG.read().unwrap().sender_file.clone()
