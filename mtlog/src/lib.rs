@@ -60,10 +60,11 @@
 
 use log::{LevelFilter, Log};
 use mtlog_core::{
-    LogFile, LogMessage, LogSender, LogStdout, spawn_log_thread_file, spawn_log_thread_stdout,
+    FileLogger, LogFile, LogFileSizeRotation, LogFileTimeRotation, LogMessage, LogSender,
+    LogStdout, spawn_log_thread_file, spawn_log_thread_stdout,
 };
 
-pub use mtlog_core::LoggerGuard;
+pub use mtlog_core::{LoggerGuard, SizeRotationConfig, TimeRotationConfig};
 use std::{
     cell::RefCell,
     path::Path,
@@ -139,7 +140,7 @@ impl Log for MTLogger {
 
 /// Builder for configuring and initializing the logger.
 pub struct ConfigBuilder {
-    log_file: Option<LogFile>,
+    log_file: Option<FileLogger>,
     no_stdout: bool,
     no_file: bool,
     log_level: LevelFilter,
@@ -191,7 +192,7 @@ impl ConfigBuilder {
     /// Sets a log file.
     pub fn with_log_file<P: AsRef<Path>>(self, path: P) -> Result<Self, std::io::Error> {
         Ok(Self {
-            log_file: Some(LogFile::new(path)?),
+            log_file: Some(FileLogger::Single(LogFile::new(path)?)),
             ..self
         })
     }
@@ -201,7 +202,23 @@ impl ConfigBuilder {
         path: Option<P>,
     ) -> Result<Self, std::io::Error> {
         Ok(Self {
-            log_file: path.map(|p| LogFile::new(p)).transpose()?,
+            log_file: path
+                .map(|p| LogFile::new(p).map(FileLogger::Single))
+                .transpose()?,
+            ..self
+        })
+    }
+    /// Sets time-based log file rotation.
+    pub fn with_time_rotation(self, config: TimeRotationConfig) -> Result<Self, std::io::Error> {
+        Ok(Self {
+            log_file: Some(FileLogger::TimeRotation(LogFileTimeRotation::new(config)?)),
+            ..self
+        })
+    }
+    /// Sets size-based log file rotation.
+    pub fn with_size_rotation(self, config: SizeRotationConfig) -> Result<Self, std::io::Error> {
+        Ok(Self {
+            log_file: Some(FileLogger::SizeRotation(LogFileSizeRotation::new(config)?)),
             ..self
         })
     }

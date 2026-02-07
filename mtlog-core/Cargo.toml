@@ -1,6 +1,6 @@
 [package]
 name = "mtlog-core"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 authors = ["Antoine Renaud <antoine.renaud91@gmail.com>"]
 description = "Core utilities for mtlog - shared logging infrastructure."

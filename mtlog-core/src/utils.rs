@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::{
     config::MTLOG_CONFIG,
-    log_writer::{LogFile, LogStdout, LogWriter},
+    log_writer::{LogStdout, LogWriter},
 };
 
 /// Guard that ensures the logger is properly shut down when dropped.
@@ -137,7 +137,7 @@ pub fn spawn_log_thread_stdout(mut writer: LogStdout) -> LogSender {
     LogSender::new(sender, handler)
 }
 
-pub fn spawn_log_thread_file(mut writer: LogFile) -> LogSender {
+pub fn spawn_log_thread_file(mut writer: impl LogWriter + Send + 'static) -> LogSender {
     let (sender, receiver) = unbounded::<Arc<LogMessage>>();
     let handler = std::thread::spawn(move || {
         let mut batch = Vec::with_capacity(32);

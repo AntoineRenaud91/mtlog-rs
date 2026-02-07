@@ -13,7 +13,7 @@ pub trait LogWriter {
     fn flush(&mut self);
 }
 
-fn replace_line_in_file(file: &mut BufWriter<File>, line: &str, pos: u64) {
+pub(crate) fn replace_line_in_file(file: &mut BufWriter<File>, line: &str, pos: u64) {
     file.seek(SeekFrom::Start(pos)).unwrap();
     write!(file, "{line}").unwrap();
     file.seek(SeekFrom::End(0)).unwrap();

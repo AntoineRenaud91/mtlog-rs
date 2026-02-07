@@ -1,6 +1,6 @@
 [package]
 name = "mtlog"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2024"
 authors = ["Antoine Renaud <antoine.renaud91@gmail.com>"]
 description = "Multi-threaded logger with support for log files."
@@ -13,4 +13,4 @@ categories = ["config", "concurrency"]
 
 [dependencies]
 log = { version = "0.4.22", features = ["std"] }
-mtlog-core = { version="0.1.0", path = "../mtlog-core" }
+mtlog-core = { version="0.2.0", path = "../mtlog-core" }
