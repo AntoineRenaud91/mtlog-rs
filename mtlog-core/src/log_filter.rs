@@ -25,7 +25,7 @@ use regex::Regex;
 /// assert!(filter.is_match("myapp::db", "important query"));
 /// assert!(!filter.is_match("myapp::db", "routine check"));
 /// ```
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct LogFilter {
     allow_targets: Vec<Regex>,
     deny_targets: Vec<Regex>,
