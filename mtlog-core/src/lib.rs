@@ -2,11 +2,13 @@
 //! Core utilities for mtlog - shared logging infrastructure.
 
 mod config;
+mod log_filter;
 mod log_rotation;
 mod log_writer;
 mod utils;
 
 pub use config::MTLOG_CONFIG;
+pub use log_filter::LogFilter;
 pub use log_rotation::{
     FileLogger, LogFileSizeRotation, LogFileTimeRotation, SizeRotationConfig, TimeRotationConfig,
 };

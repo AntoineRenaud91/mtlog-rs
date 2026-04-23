@@ -17,4 +17,5 @@ colored = "3.0.0"
 crossbeam-channel = "0.5.15"
 derive_from_env = "1"
 log = { version = "0.4.22", features = ["std"] }
+regex = "1"
 uuid = { version = "1.10.0", features = ["v4"] }
