@@ -75,7 +75,7 @@ use mtlog_core::{
     LogFileTimeRotation, LogMessage, LogSender, LogStdout,
 };
 
-pub use mtlog_core::{SizeRotationConfig, TimeRotationConfig};
+pub use mtlog_core::{LogFilter, SizeRotationConfig, TimeRotationConfig};
 use std::{
     future::Future,
     path::Path,
@@ -93,6 +93,8 @@ struct LogConfig {
     name: Option<String>,
     /// Maximum log level
     level: LevelFilter,
+    /// Optional log filter for pattern-based message filtering.
+    filter: Option<LogFilter>,
 }
 
 /// Global configuration for the logger, accessible across threads.
@@ -105,6 +107,7 @@ static GLOBAL_LOG_CONFIG: LazyLock<Arc<RwLock<LogConfig>>> = LazyLock::new(|| {
         sender_file: None,
         name: None,
         level: LevelFilter::Info,
+        filter: None,
     }))
 });
 
@@ -126,6 +129,11 @@ impl Log for MTLogger {
             let level = record.level();
             if level > config.level {
                 return;
+            }
+            if let Some(ref filter) = config.filter {
+                if !filter.is_match(record.target(), &record.args().to_string()) {
+                    return;
+                }
             }
             let log_message = Arc::new(LogMessage {
                 level,
@@ -162,6 +170,7 @@ pub struct ConfigBuilder {
     no_file: bool,
     log_level: LevelFilter,
     name: Option<String>,
+    filter: Option<LogFilter>,
 }
 
 impl Default for ConfigBuilder {
@@ -172,6 +181,7 @@ impl Default for ConfigBuilder {
             no_file: false,
             log_level: LevelFilter::Info,
             name: None,
+            filter: None,
         }
     }
 }
@@ -184,6 +194,7 @@ impl ConfigBuilder {
             no_file,
             log_level,
             name,
+            filter,
         } = self;
         let sender_file = if no_file {
             None
@@ -203,6 +214,7 @@ impl ConfigBuilder {
             sender_stdout,
             name,
             level: log_level,
+            filter,
         }
     }
 
@@ -271,6 +283,14 @@ impl ConfigBuilder {
     pub fn maybe_with_name(self, name: Option<&str>) -> Self {
         Self {
             name: name.map(String::from),
+            ..self
+        }
+    }
+    /// Sets a log filter for pattern-based message filtering.
+    /// See [`LogFilter`] for details.
+    pub fn with_filter(self, filter: LogFilter) -> Self {
+        Self {
+            filter: Some(filter),
             ..self
         }
     }
